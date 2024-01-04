@@ -1,0 +1,107 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+```{r}
+pacman::p_load(tidyverse, rio, janitor, skimr, cowplot)
+```
+
+```{r}
+raw <- import("data/Value Proposal Summary_Argentina atualiz.xlsx", 
+    sheet = "Hyb_score_recomendacion") %>% clean_names()  %>% 
+  drop_na(target) %>% 
+  tibble
+```
+
+```{r}
+# subtropi %>% distinct(target) %>% datapasta::vector_paste()
+
+orig <- c("Amaranthus sp", "Conyza sp", "Gramíneas Anuales", "Lolium sp", "Bacteriosis", "Cercospora", "Enfermedad de caña por Antracnosis", "Enfermedad de caña por Fusarium", "Enfermedad de caña por Giberella", "Muerte súbita", "Roya", "Tizón", "Spiroplasma", "Spodoptera", "Amaranthus / Gramineas RG", "Malezas RG + Malezas no RG", "Sin malezas RG o duras", "Sorgo de alepo", "Mal de Rio Cuarto")
+
+nuevos <- c("Amaranthus sp", "Conyza sp", "Gramíneas Anuales", "Lolium sp", "fol_Bacteriosis", "fol_Cercospora", "caña_Antracnosis", "caña_Fusarium", "caña_Giberella", "vascul_Muerte súbita", "fol_Roya", "fol_Tizón", "vascul_Spiroplasma", "Spodoptera", "Amaranthus / Gramineas RG", "Malezas RG + Malezas no RG", "Sin malezas RG o duras", "Sorgo de alepo", "Mal de Rio Cuarto")
+names(nuevos) <- orig
+```
+
+
+```{r}
+dat <- raw %>%
+  mutate(target2= recode(target,!!! nuevos)) %>% 
+  select(pipeline, hybrids, biotech, clase, score,	categoria, sub_categoria, target, target2) %>% 
+  filter(
+    pipeline=="Subtropical",
+    clase=="Alta", 
+    categoria=="Enfermedades" 
+    ) %>% 
+  mutate(across(score, ~na_if(., "sin dato"))) %>% 
+  mutate_at("score", as.numeric) %>% 
+  tibble()# %>% 
+# pivot_wider(names_from = target, 
+  #             values_from = score)
+```
+
+```{r}
+dat %>% 
+  ggplot() +
+  aes(y=hybrids, x=target2, fill=score) + 
+  facet_wrap("pipeline") +
+  geom_tile() +
+  scale_x_discrete(position = "top", expand = c(0, 0, 0, 1)) +
+  scale_fill_viridis_c(direction = -1, end =.9)+
+  theme(axis.text.x=element_text(angle=60, hjust = 0, vjust=1)) +
+  coord_equal(expand = 0)+
+  labs(y="", x="", title = "Subtropical")
+
+ggsave(last_plot(), file="plots/subtropical_hib_sani.png", w=8, h=6)
+```
+
+```{r}
+dat %>% 
+  select(-target2) %>% 
+  filter(str_detect(target,"Tiz|Roy")) %>% 
+  drop_na(score) %>% 
+  pivot_wider(names_from=target, values_from = score)
+```
+
+
+```{r}
+raw2 <- import("data/Value Proposal Summary_Argentina desatualiz.xlsx", 
+    sheet = "argentina_23") %>% clean_names()  %>%
+  tibble
+raw2 %>% names
+```
+
+
+```{r}
+dat2 <- raw2 %>%
+  select(region, brand, hybrid, roya, tizon) %>% 
+  # mutate(across(score, ~na_if(., "sin dato"))) %>% 
+  # mutate_at("score", as.numeric) %>% 
+  tibble()
+# pivot_wider(names_from = target, 
+  #             values_from = score) %>% 
+
+dat2
+```
+
+```{r}
+dat2 %>% 
+  filter(hybrid!="DK74-47") %>% 
+  # export("data/lista_hibridos_23.xlsx")
+  pivot_longer(cols = roya:tizon, 
+               names_to = "enf", values_to = "score") %>% 
+  drop_na(enf) %>% 
+  ggplot() +
+  aes(y=hybrid, x=enf, fill=score) +
+  facet_wrap("region", scales = "free_y") + 
+  geom_tile() +
+  scale_x_discrete(position = "top", expand = c(0, 0, 0, 1)) +
+  # scale_fill_viridis_c(direction = -1, end =.9)+
+  scale_fill_gradient(low = "green", high = "red", na.value = NA)+
+  theme(axis.text.x=element_text(angle=60, hjust = 0, vjust=1)) +
+  # coord_equal(expand = 0)+
+  labs(y="", x="")
+
+ggsave(last_plot(), file="plots/subtropical_hib_sani.png", w=8, h=6)
+```
+

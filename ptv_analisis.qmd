@@ -1,0 +1,113 @@
+---
+title: "PTV Subtropical 2023 - Biotecnologías"
+format: html
+editor: source
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+pacman::p_load(tidyverse, rio, janitor, skimr)
+theme_set(theme_gray(base_family = 12))
+conflicted::conflict_prefer("filter", "dplyr")
+conflicted::conflict_prefer("select", "dplyr")
+```
+
+```{r}
+# load(here::here("data/datos_para_spotfire.Rdata"))  
+# setwd("C:/Users/GOXWW/Documents/github_edwardsmolina/PTV_subtropical")
+spotfire_df <-  read_csv("C:/Users/GOXWW/Documents/github_edwardsmolina/PTV_subtropical/data/datos_para_spotfire.csv")
+
+long <- spotfire_df %>% pivot_wider(names_from = "Variable", 
+                            values_from = "BLUPs") %>%  clean_names()
+```
+
+## Gusano cogollero (*Spodoptera frugiperda*)
+
+### Daño en Vegetativo
+
+```{r}
+long %>%
+  drop_na(dano_de_spodoptera_en_veg_percent_plantas_davis_3) %>% 
+  ggplot()+ 
+  aes(x=fct_reorder(genotipo, dano_de_spodoptera_en_veg_percent_plantas_davis_3),
+      y=dano_de_spodoptera_en_veg_percent_plantas_davis_3, fill=biotecnologia)+ 
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = dano_de_spodoptera_en_veg_percent_plantas_davis_3 %>% round(1), 
+                y =  dano_de_spodoptera_en_veg_percent_plantas_davis_3 - 1),
+            col="black", size=4, fontface="bold"
+            # nudge_x = c(0.22, -0.22)
+            ) + 
+  coord_flip() + 
+  facet_wrap("periodo") + 
+  labs(x="", y="Daño de Spodoptera en Veg (% plantas Davis >3)") + 
+  theme_gray()
+```
+
+> El porcentaje de plantas con daño de gusano cogollero muestra un excelente desempeño de todas las biotecnologías que contienen el evento MIR162 (Viptera): VIP3, VYHR (Leptra), VTPRO4, Trecepta y PWU, aún en situaciones donde VT3P mostró un elevado nivel de daño.
+
+### Daño en espigas
+
+```{r fig.height=3.5, fig.width=10}
+#| fig-format: svg
+long %>% # names()
+  drop_na(dano_de_spodoptera_en_mazorcas) %>% 
+  filter(periodo=="2014-2022") %>% 
+  filter(base_genetica %in% c("DK7210", "DK7220", "DK7330")) %>% 
+  ggplot()+ 
+  aes(x=fct_reorder(genotipo, dano_de_spodoptera_en_mazorcas),
+      y=dano_de_spodoptera_en_mazorcas, fill=biotecnologia)+ 
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = dano_de_spodoptera_en_mazorcas %>% round(1), 
+                y =  dano_de_spodoptera_en_mazorcas ),
+            col="black", size=4, fontface="bold"
+            # nudge_x = c(0.22, -0.22)
+            ) + 
+  coord_flip() + 
+  facet_wrap("base_genetica", scales="free") + 
+  labs(x="", y="Daño de Spodoptera en mazorca", caption = "Período 2014-2022") + 
+   theme(legend.position='top')
+```
+
+
+> El daño en espigas causado por gusano cogollero también mostró un buen comportamiento de todas las biotecnologías con MIR162: VTPRO4 redujo a la mitad que VT3P pero TRE no redujo el daño en relación a VTPRO4
+
+
+## Rendimiento 
+
+```{r fig.height=4, fig.width=8}
+long %>% 
+  drop_na(rendimiento_qq_ha) %>% 
+  filter(base_genetica %in% c("DK7210", "DK7220", "DK7702", "DK7330")) %>% 
+   ggplot()+ 
+  aes(x=fct_reorder(genotipo, rendimiento_qq_ha, mean),
+      y=rendimiento_qq_ha, fill=biotecnologia)+ 
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = rendimiento_qq_ha %>% round(1), 
+                y = rendimiento_qq_ha - 1),
+            col="black", size=4, fontface="bold"
+            ) + 
+  geom_text(aes(label = paste0("n=", n), 
+                y = 2),
+            col="black", size=3) + 
+  coord_flip() + 
+  facet_grid(base_genetica~periodo, scales = "free") + 
+  labs(x="", y="Rendimiento (QQ/Ha)") + 
+  theme_gray()
+```
+
+
+Comparación de rendimiento entre biotecnologías sobre igual base genética y período:
+
+#### VT3P vs RR2 (Violeta vs verde)
+- Base DK7210:  +10.8 qq/ha (serie, 16%) ~  +4.9 qq/ha (2022, 7%)
+
+#### VTPRO4 vs VT3P (rojo vs violeta)  (promedio +6.6, 8.7%)
+
+- Base DK7210: +2.4 qq/ha (serie) ~ 2.3 (2022) >> 3%
+- Base DK7220: +7.1 qq/ha (serie) ~ SD (2022)  >> 9%
+- Base DK7330: +10.4 qq/ha (serie) ~ SD (2022) >> 14%
+
+#### Trecepta vs VTPRO4 (verde vs rojo, 1.7%) 
+- Base DK7330: +1.5 qq/ha (serie) 

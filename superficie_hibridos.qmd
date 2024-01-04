@@ -1,0 +1,33 @@
+```{r}
+pacman::p_load(tidyverse, rio, janitor, skimr)
+```
+
+```{r}
+dat <- import("data/Invoicing 23-24_CYTD.xlsx") %>% clean_names()
+```
+
+```{r}
+head(dat)
+```
+
+```{r}
+dat %>% 
+  mutate(has=seed_bags * 0.82 /1000) %>% 
+  ggplot(aes(
+    x =reorder(com_name, has, sum),
+    y = has, fill=brand)) + 
+  coord_flip() + 
+  geom_bar(stat = "identity") +
+  geom_text(
+    aes(x =reorder(com_name, has, sum),
+        y = has, label = round(has)),
+    stat = 'summary', fun = sum,  
+    vjust = 0.5, hjust=-.1, size = 3) +
+  facet_grid(brand ~ .,  scales="free", space = "free")+
+  labs(x = "", y = "Superficie (miles de ha)", fill = "", 
+       title = "Superficie sembrada en 2022/23")+
+  guides(fill="none") + 
+  theme_bw(base_size = 12) 
+
+ggsave(last_plot(), file="plots/has_hib.png", w=8, h=6)
+```
