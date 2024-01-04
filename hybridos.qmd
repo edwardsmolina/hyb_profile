@@ -1,0 +1,33 @@
+---
+editor: source
+editor_options: 
+  chunk_output_type: console
+---
+
+## Session setup
+
+```{r setup}
+pacman::p_load(tidyverse, rio)
+```
+
+```{r}
+raw <- import("~/github_edwardsmolina/hyb_profile/data/perfil_sanitario_hibridos_conosur_23.xlsx", sheet="conosur") %>% 
+  janitor::clean_names() 
+glimpse(raw)
+```
+
+```{r}
+dat <- raw %>% 
+  separate(biotecnologia_disponible, into = c("bio_1", "bio_2")) %>% 
+  pivot_longer(contains("bio"), names_to = "delete", values_to = "bio") %>% 
+  drop_na(bio) %>% 
+  select(-delete) %>% 
+  relocate(pipeline, marca, producto, bio) %>% 
+  arrange(pipeline, producto) %>% 
+  data.frame()
+```
+
+```{r}
+dat %>% export("~/github_edwardsmolina/hyb_profile/data/perfil_sanitario_hibridos_conosur_cultivio_23.xlsx")  
+```
+
