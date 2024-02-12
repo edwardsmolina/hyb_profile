@@ -1,0 +1,347 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+pacman::p_load(tidyverse, janitor)
+pacman::p_load(tidyverse, janitor, skimr, ggstance)
+```
+
+
+```{r Re-start here!}
+dat <- rio::import("data/fungi_cleaned.csv")
+dat %>% 
+  # glimpse()
+  pivot_longer(cols = yld_fungi:yld_check, 
+               names_prefix = "yld_") %>% 
+  filter(!str_detect(region, "Norte"))->templado
+```
+
+```{r}
+library(lme4)
+m1 <- lmer(value ~ product_name * name + (1|field_name), data=templado)
+plot(m1)
+car::Anova(m1)
+sjPlot::plot_model(m1)
+```
+
+```{r}
+dat %>% 
+  unite("Reg_season", region, Season) %>% 
+  ggplot() + 
+  aes(Reg_season, yield_response) + 
+  geom_boxplot(width=.5, alpha=.5, fill="steelblue") + 
+  geom_jitter(width=.1) + 
+  cowplot::theme_minimal_grid() + 
+  labs(x="") + 
+  geom_hline(yintercept=0)
+```
+
+
+Tablero de datos
+
+```{r}
+dat <- dat_wide %>% 
+  pivot_longer(contains("yld"), names_prefix="yld_", 
+               names_to = "trt", values_to = "yld")
+```
+
+```{r}
+EI <- dat %>% 
+  group_by(field_name) %>% 
+  summarise(ei=median(yld)) %>% 
+  mutate(ei_level=ifelse(ei < 80, "Low_EI",  "High_EI")) %>% 
+  mutate(fs = case_when(
+    str_detect(field_name, "EARLY") ~ "EARLY", 
+    TRUE~ "LATE"))
+EI$ei %>% hist()
+```
+
+```{r}
+dat %>%
+  count(region, field_name, product_name, trt) %>% 
+  left_join(EI)-> dat_table
+```
+
+
+```{r}
+dat_table %>%   
+  ggplot() +
+  aes(x=product_name, y=field_name, fill=n) +
+  geom_tile(width=0.7, height=0.7) +
+  scale_fill_viridis_c(direction = -1, end =.5)+
+  facet_grid(.~region, scales = "free") +
+  theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=.5)) +
+  theme(axis.text.y = element_text(colour = ifelse(dat_table$ei < 80, "red",  "blue"))) +
+  labs(y="", x="", 
+       title= "FTN hybrids/field distribution", 
+       caption = "Low_EI (red) < 80 qq/ha (median within-field yield) < High_EI (blue)")  +
+  guides(fill="none")
+```
+
+Hybrid Yield 
+
+```{r}
+check %>% 
+  ggplot() + 
+  aes(yld_check, fct_reorder(product_name, yld_check, mean))+ 
+  geom_point(alpha=0.2) +
+  stat_summary(fun.data = "mean_cl_boot", colour = "red", linewidth = 1, size = .1)
+```
+
+Overall response
+
+```{r}
+dat_wide %>% 
+  filter(!str_detect(field_name, "EEBONA|SCHANG|MONCHO|MATESA")) %>% 
+  ggplot()+
+  aes(x=yield_response)+ 
+  geom_histogram(fill = "steelblue")+
+  stat_summaryh(fun.x=median, geom="vline", 
+                 aes(xintercept=..x.., y=1)) +
+  stat_summaryh(fun.x=median, geom="text", col="white",
+                aes(label=paste0("median: ", round(..x..,1)), y=.1), hjust=-.1, angle=90, size=5) +
+  theme_bw()+
+  labs(x="%", title="Overall yield response") + 
+  guides(col="none")
+
+# ggsave(last_plot(), file="plots/respo_overall.png", h=4, w=6, scale=.8)
+```
+
+Response by region
+
+```{r}
+dat_wide %>% 
+  filter(!str_detect(field_name, "EEBONA|SCHANG|MONCHO|MATESA")) %>%
+  ggplot()+
+  aes(yield_response, fct_rev(region))+ 
+  # facet_wrap("region", scales="free_y") +
+  geom_vline(xintercept = 0, linetype="dashed") +
+  geom_boxplot(width=.2, outlier.shape = NA, fill="grey90") +
+  geom_point(aes(col=field_name)) +
+  stat_summary(aes(label=round(..x..,1)), col="red",
+               fun=median, geom="text", size=5, 
+               vjust = 2.2, hjust=.7) +
+  theme_bw()+ theme(panel.grid.major.x = element_blank())+
+  labs(x="%", title="Yield response by region" ,y="") + 
+  guides(col="none") 
+  
+ggsave(last_plot(), file="plots/resp_region.png", h=4, w=6, scale=.8)
+```
+
+Response by region / hybrid
+
+```{r}
+ dat_wide %>% 
+ filter(!str_detect(field_name, "EEBONA|SCHANG|MONCHO|MATESA")) %>%
+   mutate(product_name = 
+            fct_relevel(product_name, 
+                        c("DK7210PRO4", "DK7220PRO4",
+                              "DK7210VT3P", "DK7272TRE"))) %>%
+ ggplot()+
+   aes(yield_response, product_name)+ 
+   facet_wrap("region", scales="free") +
+   geom_boxplot(width=.2, outlier.shape = NA, fill="grey90") +
+   geom_point(aes(col=field_name)) +
+   stat_summary(aes(label=round(..x..)), col="red", 
+                fun=median, geom="text", size=3, vjust = -2) + 
+   theme_bw()+ theme(panel.grid.major.x = element_blank())+
+   labs(x="%", title="Yield response by region/hybrid" ,y="") + 
+   guides(col="none")  
+
+# ggsave(last_plot(), file="plots/response_region_hyb.png", h=4, w=6, scale=.8)
+```
+
+Response pampeana hybrid / season
+
+```{r}
+dat_wide %>% 
+  filter(!str_detect(field_name, "EEBONA|SCHANG|MONCHO|MATESA")) %>%
+  filter(str_detect(region, "Reg. Pampeana")) %>%
+  ggplot()+
+  aes(yield_response, product_name, fill=Season)+ 
+  # facet_wrap("product_name", scales="free") +
+  geom_boxplot(width=.5, outlier.shape = NA, 
+               position = position_dodge(width = .5))+
+  geom_point(
+    position = position_dodge(width = .5))+
+  stat_summary(aes(label=round(..x..)), col="white", 
+               fun=median, geom="text", size=4, 
+               fontface=2, hjust=1,
+               position = position_dodge(width = .5))+
+  theme_bw()+ theme(panel.grid.major.x = element_blank())+
+  labs(x="%", title="Yield response by hybrid/season", 
+       subtitle = "Reg. Pampeana",y="") + 
+  guides(col="none")
+
+# ggsave(last_plot(), file="plots/response_pampeana_hib_season.png",        h=4, w=6, scale=.8)
+```
+
+Response at pampeana by hybrid and season 
+
+```{r}
+dat_wide %>% 
+  filter(!str_detect(field_name, "EEBONA|SCHANG|MONCHO|MATESA")) %>%
+  filter(str_detect(region, "Reg. Pampeana")) %>%
+  ggplot()+
+  aes(yield_response, product_name, fill=Season)+ 
+  # facet_wrap("product_name", scales="free") +
+  geom_boxplot(width=.5, outlier.shape = NA, 
+               position = position_dodge(width = .5))+
+  geom_point(
+    position = position_dodge(width = .5))+
+  stat_summary(aes(label=round(..x..)), col="white", 
+               fun=median, geom="text", size=4, 
+               fontface=2, hjust=1,
+               position = position_dodge(width = .5))+
+  theme_bw()+ theme(panel.grid.major.x = element_blank())+
+  labs(x="%", title="Yield response" ,y="") + 
+  guides(col="none")
+
+# ggsave(last_plot(), file="plots/response_pampeana_hib_fs.png", h=4, w=6, scale=.8)
+```
+
+Yield_check by region / hybrid
+
+```{r}
+dat_wide %>% 
+  filter(!str_detect(field_name, "EEBONA|SCHANG|MONCHO|MATESA")) %>%
+  ggplot()+
+  aes(yld_check, product_name)+ 
+  facet_wrap("region", scales="free") +
+  geom_boxplot(width=.2, outlier.shape = NA, fill="grey90") +
+  geom_point(aes(col=field_name)) +
+  stat_summary(aes(label=round(..x..)), col="red", 
+               fun=median, geom="text", size=3, vjust = -2) + 
+  theme_bw()+ theme(panel.grid.major.x = element_blank())+
+  labs(x="Yield (qq/ha)", 
+       title="Absolute Yield" ,y="") + 
+  guides(col="none")
+
+# ggsave(last_plot(), file="plots/absolute_yield.png", h=3.5, w=6)
+```
+
+Yield_fungicide by region /hybrid
+
+```{r}
+dat_wide %>% 
+  filter(!str_detect(field_name, "EEBONA|SCHANG|MONCHO|MATESA")) %>%
+  mutate(product_name = 
+           fct_relevel(product_name, 
+                       c("DK7210PRO4", "DK7220PRO4",
+                             "DK7210VT3P", "DK7272TRE"))) %>%
+  ggplot()+
+  aes(yld_fungi, product_name)+ 
+  facet_wrap("region", scales="free") +
+  geom_boxplot(width=.2, outlier.shape = NA, fill="grey90") +
+  geom_point(aes(col=field_name)) +
+  stat_summary(aes(label=round(..x..)), col="red", 
+               fun=median, geom="text", size=3, vjust = -2) + 
+  theme_bw()+ theme(panel.grid.major.x = element_blank())+
+  labs(x="Yield (qq/ha)", 
+       title="Absolute Yield" ,y="") + 
+  guides(col="none")
+
+# ggsave(last_plot(), file="plots/absolute_yield_fungi.png", h=3.5, w=6)
+```
+
+Modeling 
+
+```{r}
+library(lme4)
+library(emmeans)
+library(multcomp)
+
+mod <- lmer(log(ratio) ~ product_name + (1|field_name), dat)
+plot(mod)
+em <- emmeans(mod, ~product_name, type="response")
+cld(em, reversed = TRUE)
+```
+
+```{r}
+glimpse(dat)
+```
+
+
+# Primer set de hibridos ~ EI
+
+```{r}
+dat %>%  
+  left_join(EI) %>% 
+  filter(str_detect(product_name, "VT3|TRE")) %>%
+  filter(!str_detect(field_name, "EEBONA|SCHANG")) %>%
+  ggplot() + 
+  aes(x = trt, y = yld) + 
+  geom_line(aes(group = field_name, col=field_name), size=2) + 
+  geom_boxplot(alpha=0.3, width=.2, 
+               col="grey60", fill="grey80") +
+  geom_point(alpha=.2) + 
+  stat_summary(fun=mean, col="red", geom="crossbar", size=.2, width=.3) + 
+  stat_summary(aes(label=round(..y..)), col="red", 
+               fun=mean, geom="text", size=3, hjust = 2.1) + 
+  facet_grid(ei_level~product_name,scales="free")+
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  labs(y="Yield (qq/ha)", x="", 
+       title= "FTN/fungicide", caption = "Low_EI < 80 qq/ha (median within-field yield) < High_EI") 
+
+# ggsave(last_plot(), file="plots/biotech_yield.png", h=3.5, w=6)
+```
+
+# Segundo set de hibridos ~ EI
+
+```{r}
+dat %>% #distinct(field_name)
+  # mutate(commercial_name = 
+  #          factor(commercial_name, 
+  #                 levels = c("DK7210RR2", "DK7210VT3P", "DK7210PRO4", 
+  #                            "DK7702VT3P", "DK7702TRE"))) %>% 
+  # droplevels() %>% 
+  left_join(EI) %>% 
+  filter(str_detect(product_name, "PRO4|VYHR")) %>% 
+  # filter(!str_detect(field_name, "MATESA")) %>% 
+  ggplot() + 
+  aes(x = trt, y = yld) + 
+  geom_line(aes(group = field_name, col=field_name), size=2) + 
+  geom_boxplot(alpha=0.3, width=.2, 
+               col="grey60", fill="grey80") +
+  geom_point(alpha=.2) + 
+  stat_summary(fun=mean, col="red", geom="crossbar", size=.2, width=.3) + 
+  stat_summary(aes(label=round(..y..)), col="red", 
+               fun=mean, geom="text", size=3, hjust = 2.1) + 
+  facet_grid(.~product_name,scales="free")+
+  # facet_grid(ei_level~product_name,scales="free")+
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  labs(y="Yield (qq/ha)", x="", 
+       title= "FTN/fungicide", caption = "Low_EI < 80 qq/ha (median within-field yield) < High_EI") 
+
+# ggsave(last_plot(), file="plots/biotech_yield.png", h=3.5, w=6)
+```
+
+# Primer set de hibridos ~ FS
+
+```{r}
+dat %>%  
+  left_join(EI) %>% 
+  filter(str_detect(product_name, "VT3|TRE")) %>%
+  filter(!str_detect(field_name, "EEBONA|SCHANG|MONCHO")) %>%
+  ggplot() + 
+  aes(x = trt, y = yld) + 
+  # geom_line(aes(group = field_name, col=field_name), size=2) + 
+  geom_boxplot(alpha=0.3, width=.2, 
+               col="grey60", fill="grey80") +
+  geom_point(alpha=.2) + 
+  stat_summary(fun=mean, col="red", geom="crossbar", size=.2, width=.3) + 
+  stat_summary(aes(label=round(..y..)), col="red", 
+               fun=mean, geom="text", size=3, hjust = 2.1) + 
+  facet_grid(fs~product_name,scales="free")+
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  labs(y="Yield (qq/ha)", x="", 
+       title= "FTN/fungicide", caption = "Low_EI < 80 qq/ha (median within-field yield) < High_EI") 
+
+# ggsave(last_plot(), file="plots/biotech_yield.png", h=3.5, w=6)
+```
