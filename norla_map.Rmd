@@ -1,0 +1,76 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+```{r setup, include=FALSE}
+pacman::p_load(tidyverse, leaflet)
+```
+
+
+```{r cars}
+df_list <- readRDS("data/biotech_norla_23.RDS")
+df_list %>% names
+```
+
+```{r}
+submarkets <- df_list$submarkets %>% drop_na(FIELD_pipeline)
+
+submarkets %>% 
+  ungroup() %>% 
+  count(sub_market, FIELD_pipeline) %>%  
+  group_by(FIELD_pipeline) %>%
+  arrange(FIELD_pipeline, sub_market) %>%
+  mutate(label_pos = cumsum(n) - (n / 2)) %>% 
+  ggplot(aes(x = FIELD_pipeline)) +
+  geom_bar(aes(y = n, fill = sub_market), 
+           position = position_stack(reverse = T),
+           stat="identity", width = .5) + 
+  geom_text(aes(y = label_pos, label = n),
+            color = "black", size = 5) +
+  coord_flip() + theme_classic()
+```
+
+
+```{r}
+df_list$dat_norla %>% 
+  drop_na(FIELD_pipeline, sub_market) %>% 
+  count(commercialName, sub_market, FIELD_pipeline) %>%  
+  ungroup() %>% 
+  filter(n>10) %>% 
+  data.frame %>% 
+  arrange(commercialName) %>% 
+  rio::export("data/commercialName_at_current.xlsx")
+  ggplot(aes(y = fct_reorder(commercialName, n, mean), x = n)) +
+  facet_wrap("FIELD_pipeline", scales = "free") + 
+  geom_col() + 
+  theme_minimal() 
+```
+
+```{r}
+
+pal <- colorFactor(
+  palette = 'Dark2',
+  domain = submarkets$A
+)
+
+submarkets %>% 
+  leaflet() %>%
+  addProviderTiles("CartoDB")  %>%
+  addMarkers(
+    lng=~FIELD_field_longitude,
+    lat=~FIELD_field_latitude,
+    clusterOptions = markerClusterOptions()
+  )
+   
+submarkets %>% 
+  leaflet() %>%
+  addTiles() %>%  
+  addCircleMarkers(
+    lng=~FIELD_field_longitude, 
+    lat=~FIELD_field_latitude,
+    color = ~pal(A),
+    stroke = FALSE, fillOpacity = 0.8, popup =~A)
+
+```
+

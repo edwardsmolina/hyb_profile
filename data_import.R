@@ -1,0 +1,66 @@
+pacman::p_load(tidyverse, rio)
+crono <- import("data/winter_cereals_23.xlsx", sheet="crono") 
+devtools::source_url("https://bit.ly/2P0pDB8")#rinde_aj
+
+# YIELD Cebada ---
+dat_ceb_yld <- import("data/winter_cereals_23.xlsx", sheet="c_yld", range="N1:V16") %>% 
+  pivot_longer(2:9, 
+               names_to = c("bk","var"), 
+               names_pattern = "(.*)_(.*)", 
+               values_to = "val") %>% 
+  pivot_wider(names_from = var, values_from = val) %>% 
+  mutate(yld14=rinde_aj(peso_tot = yld, h_muestra=hum,
+                        m_muestra = 6,      # m
+                        dist_surcos = 17.5, # cm
+                        h_deseada = 14)) 
+dat_ceb_yld %>% 
+  ggplot() + 
+  aes(x=yld14, y=trt) + 
+  geom_point(aes(col=bk)) + 
+  stat_summary(fun="mean", geom = "crossbar")
+
+# YIELD TRIGO -- 
+dat_tri_yld <- import("data/winter_cereals_23.xlsx", sheet="t_yld",range="A1:G200") %>% 
+    data.frame %>% 
+    filter(ensayo=="N") %>% 
+    mutate(yld14=rinde_aj(peso_tot = yld, h_muestra=hum,
+                          m_muestra = 6,      # m
+                          dist_surcos = 17.5, # cm
+                          h_deseada = 14))  
+dat_tri_yld %>% 
+  ggplot() + 
+  aes(x=yld14, y=trt) + 
+  geom_point(aes(col=bk)) + 
+  stat_summary(fun="mean", geom = "crossbar")
+
+list(dat_ceb_yld=dat_ceb_yld, dat_tri_yld=dat_tri_yld) %>% 
+  saveRDS(file="data/winter_yield.rds")
+
+# Enfermedades cebada
+
+raw_ceb_dis <- import("data/winter_cereals_23.xlsx", sheet="c_dis",range="AL1:BJ16") %>% 
+  pivot_longer(-trt, names_to = c("dis", "bk", "date"), values_to = "val", 
+               names_sep = "_") %>% 
+  mutate_at(vars(bk, trt), as.factor) %>% 
+  mutate_at(vars(val, date), as.numeric) %>% 
+  mutate(plot=interaction(trt,bk)) %>% 
+  right_join(crono %>% filter(cultivo=="cebada")) %>% 
+  drop_na(dis)
+
+raw_ceb_dis %>% count(dis)
+str(raw_ceb_dis)
+
+# Enfermedades trigo
+
+raw_tri_dis <- import("data/winter_cereals_23.xlsx", sheet="t_dis",range="AE1:AY15") %>% 
+    pivot_longer(-trt, names_to = c("dis", "bk", "date"), values_to = "val", 
+                 names_sep = "_") %>% 
+    mutate_at(vars(bk, trt), as.factor) %>% 
+    mutate_at(vars(val, date), as.numeric) %>%
+  data.frame %>% 
+    mutate(plot=interaction(trt,bk)) %>% 
+    right_join(crono %>% filter(cultivo=="trigo"))
+str(raw_tri_dis)
+
+list(raw_ceb_dis=raw_ceb_dis, raw_tri_dis=raw_tri_dis) %>% 
+  saveRDS(file="data/winter_diseases.rds")

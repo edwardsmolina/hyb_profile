@@ -1,0 +1,418 @@
+---
+format:
+  html: 
+    self-contained: true
+editor_options: 
+  chunk_output_type: console
+---
+```{r packs, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, include=TRUE, warning = FALSE, message = FALSE)
+pacman::p_load(tidyverse, rio, ggrepel, huxtable, pheatmap)
+```
+
+```{r}
+# trait_glossary <- import("data/trait_glossary.xlsx", sheet = "trait_current")
+dat <- import("data/ftn_conosur_full_2024-05-28.csv") %>%
+    filter(FIELD_pipeline == "South")  %>% 
+    filter(!str_detect(Analysis_Status, "NOT")) %>% 
+    filter(!str_detect(SETS_setName, "FUNG"))  
+  
+
+  # left_join(trait_glossary %>% select(trait, var_type))
+
+keep_prot <- c('2015-05-88-01',
+               '2016-05-88-01', 
+               '2017-05-88-01',
+               '2018-05-88-01',
+               '2019-05-88-01',
+               '2020-05-88-01',
+               '2021-05-88-07',
+               '2022-05-88-07', 
+               '2023-05-88-06')
+
+theme_set(theme_bw())
+theme_replace(axis.text.x=element_text(angle=60, hjust=.5))
+```
+
+# Exploracion de traits en bases de FTNs
+
+```{r, eval=FALSE}
+dat %>% 
+  filter(protocolNumber %in% keep_prot) %>%
+  count(FIELD_plantingSeason, FIELD_Country, FIELD_pipeline) %>% 
+  pivot_wider(names_from = FIELD_plantingSeason, values_from = n) %>%
+  arrange(FIELD_Country) %>% 
+  hux() %>% 
+  theme_article() %>% 
+  set_top_padding(.2) %>%
+  set_bottom_padding(.2) -> dat_hux2
+
+number_format(dat_hux2) <- 0 # decimal places
+font_size(dat_hux2) <-  8
+# as_flextable(dat_hux2)
+dat_hux2
+```
+
+```{r, eval=FALSE}
+dat %>% 
+  filter(protocolNumber %in% keep_prot) %>%
+  count(FIELD_plantingSeason, FIELD_Country, SETS_setName) %>% 
+  pivot_wider(names_from = FIELD_plantingSeason, values_from = n) %>%
+  arrange(FIELD_Country) %>% 
+  hux() %>% 
+  theme_article() %>% 
+  set_top_padding(.2) %>%
+  set_bottom_padding(.2) -> dat_hux
+
+number_format(dat_hux) <- 0 # decimal places
+font_size(dat_hux) <-  8
+as_flextable(dat_hux)
+dat_hux
+```
+
+Filtros:
+ - Argentina
+ - Analysis_Status no "NOT"
+ - sin fungicida
+ 
+```{r}
+dat %>% 
+  filter(!trait %in% c("YLD", "STLP", "RTLP")) %>% 
+  count(Analysis_Status, FIELD_pipeline, FIELD_plantingSeason, 
+        OBS_observationRefCd, OBS_descriptorAbbreviation, trait) -> dat1
+# unique(dat1$SETS_setName)
+```
+
+## Trait evol
+
+### Enfermedades
+```{r,  fig.width = 10, fig.height= 8}
+dat1 %>% 
+  dplyr::filter(!OBS_descriptorAbbreviation=="N/A") %>% 
+  filter(FIELD_pipeline == "South") %>% 
+  ggplot() + 
+  facet_wrap("OBS_descriptorAbbreviation") + 
+  aes(FIELD_plantingSeason, n, col=OBS_observationRefCd, group=1) + 
+  geom_point() + 
+  geom_text_repel(
+    data = dat1 %>% 
+      dplyr::filter(!OBS_descriptorAbbreviation=="N/A") %>% 
+      group_by(OBS_descriptorAbbreviation,OBS_observationRefCd) %>%
+      filter(FIELD_plantingSeason == max(FIELD_plantingSeason)), 
+    aes(FIELD_plantingSeason, n, label=OBS_observationRefCd, group=1), 
+    alpha = 1, angle=90, max.overlaps=Inf) + 
+  guides(col="none")  
+```
+
+### Insectos y agro
+
+```{r}
+dat1 %>% 
+  filter(!OBS_observationRefCd %in% c("YLD", "STLP", "RTLP")) %>% 
+  filter(OBS_descriptorAbbreviation=="N/A") %>% 
+  ggplot() + 
+  facet_wrap("OBS_observationRefCd") + 
+  aes(FIELD_plantingSeason, n, col=OBS_observationRefCd, group = 1) + 
+  geom_line(size=2, alpha=.5) +
+  geom_point() + 
+  guides(col="none") 
+```
+
+## Foliares
+
+### CERCZM
+
+```{r}
+dat %>% 
+  filter(OBS_descriptorAbbreviation=="CERCZM") %>% 
+  filter(!OBS_observationRefCd=="EPIL") %>% 
+  filter(FIELD_Country=="Argentina")  %>% 
+  drop_na(OBS_numValue) -> dat_CERCZM
+
+dat_CERCZM %>% 
+  group_by(year_loc) %>%
+  summarise(press = max(OBS_numValue)) %>% 
+  mutate(keep=press>3) %>% 
+  ungroup-> pres_CERCZM
+
+pres_CERCZM %>% 
+  filter(press>0) %>% 
+  ggplot() + 
+  aes(y=fct_reorder(year_loc, press, mean), x=press, fill=keep) +     geom_bar(stat = "identity")
+
+pres_CERCZM %>% 
+  filter(keep==TRUE) %>% 
+  left_join(dat_CERCZM, by="year_loc") -> clean_CERCZM
+
+clean_CERCZM %>%  
+  ggplot() + 
+  aes(y=fct_reorder(commercialName,OBS_numValue,mean), 
+      x=OBS_numValue, col=year_loc) + 
+  geom_jitter(width=.1, alpha=.5)
+```
+
+### PUCCSO
+
+```{r}
+dat %>% 
+  filter(OBS_descriptorAbbreviation=="PUCCSO") %>% 
+  filter(!OBS_observationRefCd=="EPIL") %>% 
+  filter(FIELD_Country=="Argentina")  %>% 
+  drop_na(OBS_numValue) -> dat_PUCCSO
+
+dat_PUCCSO %>% 
+  group_by(year_loc) %>%
+  summarise(press = max(OBS_numValue)) %>% 
+  mutate(keep=press>3) %>% 
+  ungroup-> pres_PUCCSO
+
+pres_PUCCSO %>% 
+  filter(press>0) %>% 
+  ggplot() + 
+  aes(y=fct_reorder(year_loc, press, mean), x=press, fill=keep) +     geom_bar(stat = "identity")
+
+pres_PUCCSO %>% 
+  filter(keep==TRUE) %>% 
+  left_join(dat_PUCCSO, by="year_loc") %>% 
+  droplevels() -> clean_PUCCSO
+
+clean_PUCCSO %>%  
+  ggplot() + 
+  aes(y=fct_reorder(commercialName,OBS_numValue,mean), 
+      x=OBS_numValue, col=year_loc) + 
+  geom_jitter(width=.1, alpha=.5) + 
+  guides(col="none")
+```
+
+### SETOTU
+
+```{r}
+dat %>% 
+  filter(OBS_descriptorAbbreviation=="SETOTU") %>% 
+  filter(!OBS_observationRefCd=="EPIL") %>% 
+  filter(FIELD_Country=="Argentina")  %>% 
+  drop_na(OBS_numValue) -> dat_SETOTU
+
+dat_SETOTU %>% 
+  group_by(year_loc) %>%
+  summarise(press = max(OBS_numValue)) %>% 
+  mutate(keep=press>3) %>% 
+  ungroup-> pres_SETOTU
+
+pres_SETOTU %>% 
+  filter(press>0) %>% 
+  ggplot() + 
+  aes(y=fct_reorder(year_loc, press, mean), x=press, fill=keep) +     geom_bar(stat = "identity")
+
+pres_SETOTU %>% 
+  filter(keep==TRUE) %>% 
+  left_join(dat_SETOTU, by="year_loc") %>% 
+  droplevels() -> clean_SETOTU
+
+clean_SETOTU %>%  
+  ggplot() + 
+  aes(y=fct_reorder(commercialName,OBS_numValue,mean), 
+      x=OBS_numValue, col=year_loc) + 
+  geom_jitter(width=.1, alpha=.5) + 
+  guides(col="none")
+```
+
+## Tallo 
+
+### ERTCPX
+
+```{r}
+dat %>% 
+  # distinct(trait) %>% arrange(trait)
+  filter(str_detect(trait, "SDPLN_N/A|YLD|STLP")) %>% 
+  filter(FIELD_Country=="Argentina")  %>% 
+  drop_na(OBS_numValue) -> dat_ERTCPX
+
+# dat %>% 
+#   filter(str_detect(FIELD_plantingSeason, "2023")) %>% 
+#   select(year_loc, commercialName, trait, OBS_numValue) %>% 
+#   # distinct(trait) %>% arrange(trait)
+#   filter(str_detect(trait, "SDPLN_N/A|YLD|STLP")) %>% 
+#   pivot_wider(names_from = trait, 
+#               values_from = OBS_numValue, 
+#               values_fn = mean) %>% 
+#   drop_na("SDPLN_N/A") %>% 
+#   view
+
+dat_ERTCPX %>% count(trait)
+
+dat_ERTCPX %>% 
+  filter(str_detect(trait, "SDPLN_N/A")) %>% 
+  group_by(year_loc) %>%
+  summarise(press = max(OBS_numValue)) %>% 
+  mutate(keep=press>3) %>% 
+  ungroup-> pres_ERTCPX
+
+pres_ERTCPX %>% 
+  # filter(press>0) %>% 
+  ggplot() + 
+  aes(y=fct_reorder(year_loc, press, median), x=press, fill=keep) +     
+  geom_bar(stat = "identity")
+
+pres_ERTCPX %>%
+  right_join(dat_ERTCPX, by=c("year_loc")) %>%
+  filter(keep==TRUE) %>%
+  droplevels() -> clean_ERTCPX
+
+clean_ERTCPX %>% count(OBS_observationRefCd)
+
+clean_ERTCPX %>%  
+  ggplot() + 
+  aes(y=fct_reorder(commercialName,OBS_numValue,mean), 
+      x=OBS_numValue) + 
+  geom_point(alpha=.5, aes(col=year_loc)) + 
+  # guides(col="none") + 
+  stat_summary() + 
+  labs(x="Incidencia de Muerte Súbita", y="") + 
+  guides(col=guide_legend(ncol=1)) +
+  theme(legend.position="bottom")
+
+clean_ERTCPX %>%  
+  select(year_loc, commercialName, trait, OBS_numValue) %>% 
+  pivot_wider(names_from = trait,
+              values_from = OBS_numValue,
+              values_fn = mean) %>% 
+  drop_na(`STLP_N/A`) %>% 
+  ggplot() + 
+  facet_wrap("year_loc") +
+  aes(`STLP_N/A`, `SDPLN_N/A`, label=commercialName)+
+  geom_text(vjust=1) + 
+  geom_point() + 
+  labs(x="Quiebre %", y="Muerte Subita %") +
+  expand_limits(x = 0, y = 0)
+
+```
+
+### FUSASP
+
+```{r}
+dat %>% 
+  filter(!str_detect(SETS_setName, "FUN")) %>%
+  filter(!str_detect(Analysis_Status, "NOT")) %>%
+  filter(OBS_descriptorAbbreviation=="FUSASP") %>% 
+  filter(FIELD_Country=="Argentina")  %>% 
+  drop_na(OBS_numValue) -> dat_FUSASP
+
+dat_FUSASP %>% 
+  ggplot() + 
+  facet_wrap("FIELD_pipeline") +
+  aes(y=OBS_numValue, x=FIELD_plantingSeason, col=OBS_observationRefCd) + 
+  geom_jitter(position = position_dodge2(width = 0.2), alpha=0.4)+
+  scale_y_continuous(breaks=scales::pretty_breaks(9)) +
+  labs(title = "FUSASP")
+
+dat_FUSASP %>% 
+  filter(OBS_observationRefCd=="EDIC") %>% 
+  ggplot() + 
+  facet_wrap("FIELD_name") +
+  aes(x=as.factor(FIELD_plantingSeason), y=OBS_numValue, col=OBS_observationRefCd) + 
+  geom_point()
+```
+
+
+```{r}
+dat_FUSASP %>% 
+  filter(!OBS_observationRefCd=="EDIC") -> clean_FUSASP
+
+clean_FUSASP %>% 
+  ggplot() + 
+  facet_wrap("FIELD_pipeline") +
+  aes(y=OBS_numValue, x=FIELD_plantingSeason, col=OBS_observationRefCd) + 
+  geom_jitter(position = position_dodge2(width = 0.2), alpha=0.4)+
+  scale_y_continuous(breaks=scales::pretty_breaks(9)) +
+  labs(title = "FUSASP")
+```
+
+## Espiga
+
+### GIBBZE
+
+```{r}
+dat %>% 
+  filter(!str_detect(SETS_setName, "FUN")) %>%
+  filter(!str_detect(Analysis_Status, "NOT")) %>%
+  filter(OBS_descriptorAbbreviation=="GIBBZE") %>% 
+  filter(FIELD_Country=="Argentina")  %>% 
+  drop_na(OBS_numValue) -> dat_GIBBZE
+
+dat_GIBBZE %>% 
+  ggplot() + 
+  facet_wrap("FIELD_pipeline") +
+  aes(x=as.factor(FIELD_plantingSeason), y=OBS_numValue, col=OBS_observationRefCd) + 
+  geom_jitter(position = position_dodge2(width = 0.2), alpha=0.4)+
+  scale_y_continuous(breaks=scales::pretty_breaks(9)) +
+  labs(title = "GIBBZE", x="")
+```
+
+> outlier 
+
+```{r eval=FALSE}
+dat_FUSASP %>% 
+  filter(!OBS_observationRefCd=="EDIC") -> clean_FUSASP
+
+clean_FUSASP %>% 
+  ggplot() + 
+  facet_wrap("OBS_observationRefCd") + 
+  aes(x=FIELD_plantingSeason, y=commercialName) + 
+  geom_point()+
+  scale_x_continuous(breaks=scales::pretty_breaks(9))
+```
+
+### ERMX
+
+```{r}
+dat %>% 
+  filter(!str_detect(SETS_setName, "FUN")) %>%
+  filter(!str_detect(Analysis_Status, "NOT")) %>%
+  filter(OBS_descriptorAbbreviation=="ERMX") %>% 
+  filter(FIELD_Country=="Argentina")  %>% 
+  drop_na(OBS_numValue) -> dat_ERMX
+
+dat_ERMX %>% 
+  ggplot() + 
+  facet_wrap("FIELD_pipeline") +
+  aes(y=OBS_numValue, x=FIELD_plantingSeason, col=OBS_observationRefCd) + 
+  geom_jitter(position = position_dodge2(width = 0.2), alpha=0.4)+
+  scale_y_continuous(breaks=scales::pretty_breaks(9)) +
+  labs(title = "ERMX", x="")
+```
+
+
+
+## Sistemicas
+### Carbon
+### Spirku
+
+```{r}
+dat %>% 
+  filter(!str_detect(SETS_setName, "FUN")) %>%
+  filter(!str_detect(Analysis_Status, "NOT")) %>%
+  filter(OBS_descriptorAbbreviation=="SPIRKU") %>% 
+  filter(FIELD_Country=="Argentina")  %>% 
+  drop_na(OBS_numValue) -> dat_SPIRKU
+
+dat_SPIRKU %>% 
+  ggplot() + 
+   facet_wrap("FIELD_pipeline") +
+  aes(y=OBS_numValue, x=FIELD_plantingSeason, col=OBS_observationRefCd) + 
+  geom_jitter(position = position_dodge2(width = 0.2), alpha=0.4)+
+  scale_y_continuous(breaks=scales::pretty_breaks(9)) +
+  labs(title = "SPIRKU", x="")
+```
+
+```{r eval=FALSE}
+dat_FUSASP %>% 
+  filter(!OBS_observationRefCd=="EDIC") -> clean_FUSASP
+
+clean_FUSASP %>% 
+  ggplot() + 
+  facet_wrap("OBS_observationRefCd") + 
+  aes(x=FIELD_plantingSeason, y=commercialName) + 
+  geom_point()+
+  scale_x_continuous(breaks=scales::pretty_breaks(9))
+```

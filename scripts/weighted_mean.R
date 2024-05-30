@@ -10,7 +10,8 @@ df <- tibble::tribble(
 
 df %>% 
   group_by(date) %>% 
-  summarise(w=weighted.mean(score, weight))
+  summarise(w=weighted.mean(score, weight), 
+            mean_score=mean(score))
 
 # 2017 - media normal (mismos pesos)
 # 2018 - media con mas peso hacia 2
